@@ -75,7 +75,7 @@ spec:
     persistence:
       claude-config:
         type: persistentVolumeClaim
-        storageClass: sc-nas
+        storageClass: local-path
         accessMode: ReadWriteOnce
         size: 5Gi
         globalMounts:
@@ -86,17 +86,11 @@ spec:
             subPath: keyrings
       claude-workspace:
         type: persistentVolumeClaim
-        storageClass: sc-nas
+        storageClass: local-path
         accessMode: ReadWriteOnce
         size: 20Gi
         globalMounts:
           - path: /home/claude/workspace
-      coding:
-        type: nfs
-        server: "${NAS_SERVER}"
-        path: "${NAS_CODING_PATH}"
-        globalMounts:
-          - path: /home/claude/coding
     defaultPodOptions:
       hostNetwork: true
       dnsPolicy: ClusterFirstWithHostNet
