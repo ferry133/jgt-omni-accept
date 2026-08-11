@@ -15,6 +15,14 @@ spec:
     kind: OCIRepository
     name: claude-code
   interval: 1h
+  # `replicas: 0` below means no pod ever schedules, and a WaitForFirstConsumer
+  # storage class binds a PVC only when one does — so Helm waiting for these
+  # claims to bind would time out and fail the release permanently. Immediate
+  # binding (what an NFS class does) hides this; local-path exposes it.
+  install:
+    disableWait: true
+  upgrade:
+    disableWait: true
   values:
     controllers:
       #{instance}#:
