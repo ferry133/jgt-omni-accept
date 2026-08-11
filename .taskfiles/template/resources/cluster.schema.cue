@@ -29,6 +29,60 @@ import (
 	// (a peer-to-peer image mirror, for one) are suspended when this is true.
 	single_node?: bool
 
+	// local-path volumes live in a directory on one node and the PV carries node
+	// affinity to it. On a single node that is simply correct. On more than one
+	// node it silently pins every stateful workload to whichever node first
+	// scheduled it: the pod cannot be rescheduled elsewhere, and losing that node
+	// loses both the data and the ability to restart. The cluster looks
+	// replicated and is not.
+	//
+	// Set this only when that is understood and accepted. The real answer for a
+	// multi-node cluster with no NAS is replicated block storage, which this
+	// stack does not yet provide.
+	accept_node_pinning?: bool
+
+	if deployment_profile == "appliance" {
+		single_node: true
+	}
+
+	// Extras that put a database on the node-local block tier rather than on
+	// bulk storage. NFS does not honour the fsync and lock semantics a database
+	// needs, so these land on `local-path` even when the cluster has a NAS —
+	// which is the same node-pinning exposure as choosing `local-path` for
+	// everything, arriving by a different route.
+	#BlockTierExtras: [
+		"claudecode/postgres",
+		"default/mariadb",
+		"default/postgres",
+		"freepbx/freepbx",
+	]
+
+	// Whether anything in this cluster lands on a node-local class. This, and
+	// not `storage_backend`, is what the acknowledgement below has to be keyed
+	// on: a NAS-backed cluster running a database is pinned just as hard, and
+	// asking about the default class would wave it through.
+	_uses_node_local: *false | true
+	if storage_backend == "local-path" {
+		_uses_node_local: true
+	}
+	if len([for e in extras if list.Contains(#BlockTierExtras, e) {e}]) > 0 {
+		_uses_node_local: true
+	}
+
+	if _uses_node_local {
+		single_node: bool
+		if single_node == false {
+			// `bool` and not `true`: an unresolved type is what makes an absent
+			// field fail validation. Asserting the value here instead would let
+			// CUE satisfy the requirement on the reader's behalf, and the check
+			// would pass without anyone having read it.
+			accept_node_pinning: bool
+			if accept_node_pinning == false {
+				accept_node_pinning: _|_
+			}
+		}
+	}
+
 	// How this cluster's machines are provisioned. Declared rather than inferred:
 	// nodes.yaml is materialised automatically for every repo (makejinja aborts on
 	// a missing data file), so its presence proves nothing about the path.
@@ -116,6 +170,12 @@ import (
 	cluster_name: string & !=""
 	coredns_cluster_ip?: net.IPv4
 
+	// Escape hatch for a cluster whose database is already on NFS. Defaults to
+	// the block tier; setting it to an NFS class is a deliberate statement that
+	// the move is pending, because a PVC's storageClassName is immutable and
+	// the data has to be dumped and restored to change it.
+	db_storage_class?: string & !=""
+
 	// Off-site backup. A single-node appliance on local disk has no redundancy,
 	// so losing the disk loses the database and the agent's accumulated context.
 	// Required there rather than opt-in: rendering a cluster whose data is
@@ -131,7 +191,9 @@ import (
 		backup_r2_access_key_id: string & !=""
 		backup_r2_secret_access_key: string & !=""
 	}
-	extras?: [...string]
+	// Defaulted rather than optional so the block-tier test above can read it
+	// unconditionally.
+	extras: *[] | [...string]
 	freepbx_mysql_root_password?: string & !=""
 	freepbx_mysql_password?: string & !=""
 	claudecode_postgres_password?: string & !=""
