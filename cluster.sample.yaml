@@ -68,6 +68,15 @@ storage_backend: "nfs"
 # route, and with it the question.
 # accept_node_pinning: true
 
+# (OPTIONAL) Deploy k8s-gateway, the in-cluster resolver for internal names.
+# On by default, because it is the only thing that answers them — Cloudflare
+# refuses to publish RFC1918 addresses, so there is no public-DNS route. The
+# operator points the router's DNS at it once during installation; see
+# docs/operations/router-dns.md. It shares its address with envoy-internal and
+# mqtt, so it costs nothing extra. Turn it off only where something else
+# resolves those names.
+# k8s_gateway: true
+
 # ── Block tier ────────────────────────────────────────────────────────────────
 # (OPTIONAL) Which storage class databases use. Defaults to "local-path" and
 # deliberately does not follow storage_backend — NFS is never a correct answer
@@ -173,6 +182,13 @@ nas_path: "/volume/path"              # NFS export for storage provisioner (sc-n
 # nas_coding_path stays optional even on NFS: without it the claude-code
 # workspace uses the profile's default storage class instead.
 # nas_coding_path: "/volume/coding"
+
+# (REQUIRED for appliance) Has age.key been escrowed outside this cluster?
+# Backups are encrypted to the cluster's own public key, so age.key is the only
+# thing that can read them — and on a single-node appliance it sits on the very
+# disk the backups exist to survive. Not defaulted: it has to be stated by
+# whoever did the escrow. See docs/operations/age-key-escrow.md
+# age_key_escrowed: true
 
 # ── Off-site backup ───────────────────────────────────────────────────────────
 # (REQUIRED under the appliance profile · optional otherwise)
@@ -362,7 +378,14 @@ ttyd_credential: "user:password"      # also used by the default/ttyd extra
 # synophoto_nas_password: ""
 
 # ── default/ttyd ──────────────────────────────────────────────────────────────
-# ttyd_credential: "user:password"    # shared with claude-code if both enabled
+# ttyd_credential: "ops:CHANGE-ME"    # shared with claude-code if both enabled
+#
+# This guards a shell that the Cloudflare tunnel makes reachable from the
+# internet as soon as it connects — no port forward, no firewall change — and
+# the hostname enters Certificate Transparency logs when its certificate is
+# issued. `task configure` refuses to render a weak one: user:password form,
+# at least 20 characters after the colon, no default usernames.
+#   python3 -c "import secrets; print('ops:' + secrets.token_urlsafe(24))"
 
 # ── default/mariadb ───────────────────────────────────────────────────────────
 # mariadb_lb_ip: "10.9.x.x"           # was hardcoded to 10.9.1.2 in jg-base

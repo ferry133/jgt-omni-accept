@@ -184,7 +184,24 @@ import (
 	backup_r2_access_key_id?: string & !=""
 	backup_r2_secret_access_key?: string & !=""
 
+	// Whether age.key has been escrowed somewhere outside this cluster.
+	//
+	// Backups are encrypted to the cluster's own public key, so age.key is the
+	// only thing that can read them. On a single-node appliance it lives on the
+	// one disk whose failure the backups exist to survive — an unescrowed key
+	// means the backups are ciphertext nobody can open, which is worse than no
+	// backups because it looks like protection.
+	//
+	// Declared rather than defaulted, for the same reason as
+	// accept_node_pinning: a default would answer on the operator's behalf.
+	age_key_escrowed?: bool
+
 	if deployment_profile == "appliance" {
+		// `bool` and not `true`: an absent field must fail validation.
+		age_key_escrowed: bool
+		if age_key_escrowed == false {
+			age_key_escrowed: _|_
+		}
 		backup_r2_bucket: string & !=""
 		backup_r2_endpoint: string & !=""
 		backup_r2_access_key_id: string & !=""
@@ -201,6 +218,10 @@ import (
 	// defaults to ["im"] at render time; ttyd_credential is only unused when
 	// claudecode_auth0_* switches the instances to OIDC login.
 	claude_instances?: [...string]
+	// Strength is checked by scripts/check-ttyd-credential.py, not here: a CUE
+	// constraint prints the offending value in its error, and a check that leaks
+	// the credential into a terminal and CI log to complain about it is worse
+	// than no check.
 	ttyd_credential?: string & !=""
 	claudecode_auth0_domain?: string & !=""
 	claudecode_auth0_client_id?: string & !=""
@@ -247,12 +268,14 @@ import (
 	// already be configured with.
 	lan_shared_addr?: net.IPv4 & !=""
 
-	// Deploy k8s-gateway. Internal names are published as ordinary A records
-	// that any resolver returns, so it is no longer the primary path — it is
-	// the fallback for a router that refuses to hand back RFC1918 answers.
-	// Defaults on everywhere except appliance, where it costs a LAN address and
-	// a customer cannot be asked to repoint a resolver at it anyway.
-	dns_fallback?: bool
+	// Deploy k8s-gateway, the in-cluster resolver for internal names. On by
+	// default everywhere, because it is the only thing that answers them:
+	// Cloudflare refuses to publish RFC1918 addresses, so there is no
+	// public-DNS route. The operator points the router's DNS at it once during
+	// installation. It shares its address with envoy-internal and mqtt, so it
+	// costs nothing extra. Turn it off only where something else resolves those
+	// names.
+	k8s_gateway?: bool
 	cloudflare_lan_tunnel_token?: string & !=""
 	// monitoring/daily-check (base app on every cluster). Fields stay optional:
 	// an unconfigured cluster's CronJob exits 0 with a "not configured" log
